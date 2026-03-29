@@ -71,7 +71,7 @@ This step usually outputs one of two outcomes:
 ## 6. Branch on uniqueness
 The workflow then uses an If node to decide what happens next.
 
-Branch A — unique companies found
+Branch A - unique companies found
 If new companies are detected:
 - Uniques found, get the rows to append
 - Append company data in the sheet
@@ -81,7 +81,7 @@ After appending, the workflow reads the sheet again:
 - Get all the rows in the sheet
 This refresh is important because the downstream loop should operate on the latest persisted state rather than on stale pre-insert data.
 
-Branch B — duplicates found
+Branch B - duplicates found
 If the incoming records already exist:
 - Duplicates found, don't append, just get the existing rows. 
 In this branch, the workflow skips insertion and simply continues using the already available sheet records.

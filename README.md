@@ -1,4 +1,4 @@
-# LinkedIn Automation Workflow - Phase 1
+# LinkedIn Automation Workflow - Phase I
 
 This project represents the first phase of a LinkedIn automation system designed to discover companies, clean and deduplicate them, and enrich them with relevant people data. The workflow is built using n8n, with Google Sheets acting as the central storage and orchestration layer.
 

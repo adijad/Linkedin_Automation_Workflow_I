@@ -1,0 +1,819 @@
+{
+  "name": "LinkedIn automation I",
+  "nodes": [
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -208,
+        -128
+      ],
+      "id": "e59109d0-15e5-4282-9a39-9a38c57c218a",
+      "name": "When clicking ‘Execute workflow’"
+    },
+    {
+      "parameters": {
+        "amount": "={{ $('Code to generate a random delay').item.json.randomDelaySeconds }}"
+      },
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        848,
+        480
+      ],
+      "id": "a15d2ff5-5d86-434d-a9bb-a55aadef4584",
+      "name": "Wait",
+      "webhookId": "ebe53127-8c82-4b4d-95c8-cd6ed2542512"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 3
+          },
+          "conditions": [
+            {
+              "id": "80364992-0416-4147-9f0c-254689102959",
+              "leftValue": "={{ $json.uniqueCount > 0 }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        0,
+        176
+      ],
+      "id": "f9f86f6a-326e-4447-8d9a-32e1e1e5e577",
+      "name": "If"
+    },
+    {
+      "parameters": {
+        "url": "https://fastapi-startups-workflow.onrender.com/startups",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "url",
+              "value": "https://topstartups.io/?hq_location=Usa"
+            },
+            {
+              "name": "limit",
+              "value": "5"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        80,
+        -128
+      ],
+      "id": "7ec4f351-547f-45cc-94c4-b96c8dd1874c",
+      "name": "HTTP Request to scrape the company information",
+      "retryOnFail": true,
+      "waitBetweenTries": 5000,
+      "maxTries": 4
+    },
+    {
+      "parameters": {
+        "jsCode": "const startups = $json.items || [];\n\nreturn startups.map(startup => ({\n  json: {\n    name: startup.name || \"\",\n    description: startup.description || \"\",\n    tags: Array.isArray(startup.tags) ? startup.tags.join(\", \") : \"\",\n    hq: startup.hq || \"\",\n    linkedin_url: startup.linkedin_url || \"\",\n    company_website: startup.company_website || \"\",\n    linkedin_status: \"pending\",\n    outreach_status: \"not_started\",\n    notes: \"\"\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        416,
+        -128
+      ],
+      "id": "228111da-bf4b-4e73-ab86-23329034c792",
+      "name": "Code to structure the company information"
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0",
+          "mode": "list",
+          "cachedResultName": "N8N Workflow",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 24367017,
+          "mode": "list",
+          "cachedResultName": "Company_Info",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0/edit#gid=24367017"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        752,
+        -128
+      ],
+      "id": "228edc55-90a8-406c-96c2-a64a9dc9756d",
+      "name": "Get the current rows in the sheet",
+      "executeOnce": true,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YuXm2pSTSyZxMBeG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "function normalize(value) {\n  return String(value ?? \"\")\n    .trim()\n    .toLowerCase()\n    .replace(/\\s+/g, \" \");\n}\n\n// New scraped companies from the earlier JS node\nconst newCompanies = $items(\"Code to structure the company information\");\n\n// Existing rows already present in the Google Sheet\nconst existingRows = $items(\"Get the current rows in the sheet\");\n\n// Build a set of existing keys from the sheet\nconst existingKeys = new Set(\n  existingRows.map(item => {\n    const row = item.json;\n    return `${normalize(row.name)}|||${normalize(row.description)}`;\n  })\n);\n\n// Also dedupe within the current incoming batch\nconst seenNewKeys = new Set();\n\nconst rowsToAppend = [];\n\nfor (const item of newCompanies) {\n  const company = item.json;\n  const key = `${normalize(company.name)}|||${normalize(company.description)}`;\n\n  // Skip if already in sheet\n  if (existingKeys.has(key)) {\n    continue;\n  }\n\n  // Skip if duplicate within this batch\n  if (seenNewKeys.has(key)) {\n    continue;\n  }\n\n  seenNewKeys.add(key);\n\n  rowsToAppend.push({\n    name: company.name ?? \"\",\n    description: company.description ?? \"\",\n    tags: Array.isArray(company.tags) ? company.tags.join(\", \") : (company.tags ?? \"\"),\n    hq: company.hq ?? \"\",\n    linkedin_url: company.linkedin_url ?? \"\",\n    company_website: company.company_website ?? \"\",\n    linkedin_status: company.linkedin_status ?? \"pending\",\n    outreach_status: company.outreach_status ?? \"not_started\",\n    notes: company.notes ?? \"\"\n  });\n}\n\nreturn [\n  {\n    json: {\n      hasUnique: rowsToAppend.length > 0,\n      uniqueCount: rowsToAppend.length,\n      rowsToAppend\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        176
+      ],
+      "id": "ad73e053-8505-4633-b66b-f3e20a5ebc99",
+      "name": "Code to check for duplicates",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0",
+          "mode": "list",
+          "cachedResultName": "N8N Workflow",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 24367017,
+          "mode": "list",
+          "cachedResultName": "Company_Info",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0/edit#gid=24367017"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        224,
+        256
+      ],
+      "id": "8fa9d20d-0b93-46d6-adc8-4ba57a348144",
+      "name": "Duplicates found, don't append, just get the current rows in the sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YuXm2pSTSyZxMBeG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rows = $json.rowsToAppend || [];\n\nreturn rows.map(row => ({\n  json: row\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        224,
+        80
+      ],
+      "id": "4c77aab2-3a73-45c9-9b38-5334ea9c65f8",
+      "name": "Uniques found, get the rows to append"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0",
+          "mode": "list",
+          "cachedResultName": "N8N Workflow",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 24367017,
+          "mode": "list",
+          "cachedResultName": "Company_Info",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0/edit#gid=24367017"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name": "={{$node[\"Code to structure the company information\"].json[\"name\"]}}",
+            "description": "={{$node[\"Code to structure the company information\"].json[\"description\"]}}",
+            "tags": "={{$node[\"Code to structure the company information\"].json[\"tags\"]}}",
+            "hq": "={{$node[\"Code to structure the company information\"].json[\"hq\"]}}",
+            "linkedin_status": "={{$node[\"Code to structure the company information\"].json[\"linkedin_status\"]}}",
+            "outreach_status": "={{$node[\"Code to structure the company information\"].json[\"outreach_status\"]}}",
+            "notes": "={{$node[\"Code to structure the company information\"].json[\"notes\"]}}",
+            "linkedin_url": "={{$node[\"Code to structure the company information\"].json[\"linkedin_url\"]}}",
+            "company_website": "={{$node[\"Code to structure the company information\"].json[\"company_website\"]}}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "name",
+              "displayName": "name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "description",
+              "displayName": "description",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "tags",
+              "displayName": "tags",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "hq",
+              "displayName": "hq",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "linkedin_url",
+              "displayName": "linkedin_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "company_website",
+              "displayName": "company_website",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "linkedin_status",
+              "displayName": "linkedin_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "outreach_status",
+              "displayName": "outreach_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            },
+            {
+              "id": "notes",
+              "displayName": "notes",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        464,
+        80
+      ],
+      "id": "1ec0b15c-d51e-401b-a89d-88687b7db9bf",
+      "name": "Append company data in the sheet",
+      "alwaysOutputData": false,
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YuXm2pSTSyZxMBeG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "documentId": {
+          "__rl": true,
+          "value": "1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0",
+          "mode": "list",
+          "cachedResultName": "N8N Workflow",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 24367017,
+          "mode": "list",
+          "cachedResultName": "Company_Info",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0/edit#gid=24367017"
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        672,
+        80
+      ],
+      "id": "d29258b5-9417-47f8-88e7-d254fadcfab7",
+      "name": "Get all the rows in the sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YuXm2pSTSyZxMBeG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitInBatches",
+      "typeVersion": 3,
+      "position": [
+        848,
+        256
+      ],
+      "id": "50a08799-dffe-4d73-96ab-57bf4760ff2e",
+      "name": "Loop Over Items, one at a time"
+    },
+    {
+      "parameters": {
+        "jsCode": "const delaySeconds = Math.floor(Math.random() * 61) + 60;\n\nreturn [\n  {\n    json: {\n      ...$json,\n      randomDelaySeconds: delaySeconds\n    }\n  }\n];"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        480
+      ],
+      "id": "07945c2d-070a-43ad-b307-043d59f6b47a",
+      "name": "Code to generate a random delay"
+    },
+    {
+      "parameters": {
+        "jsCode": "const people = $json.people ?? [];\nconst companyName = $json.company_name ?? \"\";\n\nreturn people.map(person => ({\n  json: {\n    Name: person.name ?? \"\",\n    Company: companyName,\n    Profile_url: person.profile_url ?? \"\",\n    snippet: person.snippet ?? \"\",\n    matched_role: person.matched_role ?? \"\",\n    score: person.score ?? \"\",\n    source: person.source ?? \"\",\n    enrichment_status: \"pending\"\n  }\n}));"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        304,
+        480
+      ],
+      "id": "7f94e551-c3db-46b7-8910-5398257ac37c",
+      "name": "Code to get specific fields"
+    },
+    {
+      "parameters": {
+        "operation": "append",
+        "documentId": {
+          "__rl": true,
+          "value": "1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0",
+          "mode": "list",
+          "cachedResultName": "N8N Workflow",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0/edit?usp=drivesdk"
+        },
+        "sheetName": {
+          "__rl": true,
+          "value": 1873089781,
+          "mode": "list",
+          "cachedResultName": "People_info",
+          "cachedResultUrl": "https://docs.google.com/spreadsheets/d/1Qr0j6kJ7EuivNQiztG6C-xSU-bZD9YB7pHMTiWwLCg0/edit#gid=1873089781"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "Company": "={{ $json.Company }}",
+            "Profile_url": "={{ $json.Profile_url }}",
+            "title": "={{ $json.snippet }}",
+            "Name": "={{ $json.Name }}",
+            "enrichment_status": "pending"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "Name",
+              "displayName": "Name",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Company",
+              "displayName": "Company",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "Profile_url",
+              "displayName": "Profile_url",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "title",
+              "displayName": "title",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "enrichment_status",
+              "displayName": "enrichment_status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true,
+              "removed": false
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 4.7,
+      "position": [
+        576,
+        480
+      ],
+      "id": "f61c75d1-7106-4485-8fab-a0c0d821ec85",
+      "name": "Append employee data in the sheet",
+      "credentials": {
+        "googleSheetsOAuth2Api": {
+          "id": "YuXm2pSTSyZxMBeG",
+          "name": "Google Sheets account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://accompanying-diamonds-harbour-spend.trycloudflare.com/resolve",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "company_name",
+              "value": "={{ $json.name }}"
+            },
+            {
+              "name": "linkedin_url",
+              "value": "={{ $json.linkedin_url }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        32,
+        480
+      ],
+      "id": "702551d9-7fa7-4157-9704-65732d9b0922",
+      "name": "HTTP Request to get employee from the company"
+    }
+  ],
+  "pinData": {
+    "HTTP Request to scrape the company information": [
+      {
+        "json": {
+          "count": 5,
+          "pages_scraped": 1,
+          "last_page_checked": 1,
+          "stop_reason": "limit_reached",
+          "items": [
+            {
+              "name": "Pogo",
+              "description": "Help over 2M+ users earn and save by unlocking the power of their data; engagement on par with Instagram & Twitter; 7-figure revenue per employee.",
+              "tags": [
+                "Consumer",
+                "Mobile App",
+                "FinTech"
+              ],
+              "hq": "Brooklyn, New York, USA",
+              "linkedin_url": "https://www.linkedin.com/company/joinpogo/",
+              "company_website": "https://www.joinpogo.com/?utm_source=topstartups.io"
+            },
+            {
+              "name": "Pylon",
+              "description": "Building all-in-one B2B post-sales support platform powered by conversational data and layered with intelligence",
+              "tags": [
+                "Artificial Intelligence",
+                "SaaS",
+                "Enterprise Software"
+              ],
+              "hq": "San Francisco Bay Area, California, USA",
+              "linkedin_url": "https://www.linkedin.com/company/usepylon",
+              "company_website": "https://www.usepylon.com/?utm_source=topstartups.io"
+            },
+            {
+              "name": "Adaptive Security",
+              "description": "Protecting companies from AI-powered attacks",
+              "tags": [
+                "Artificial Intelligence",
+                "Cybersecurity",
+                "Enterprise Software"
+              ],
+              "hq": "New York, New York, USA",
+              "linkedin_url": "https://www.linkedin.com/company/adaptivesecurity",
+              "company_website": "https://www.adaptivesecurity.com/?utm_source=topstartups.io"
+            },
+            {
+              "name": "Opal Security",
+              "description": "Opal is the programmable authorization platform that gives security and engineering teams real-time visibility, expressive policy-as-code, and direct control over every identity.",
+              "tags": [
+                "Enterprise Software",
+                "Cybersecurity"
+              ],
+              "hq": "San Francisco Bay Area, California, USA",
+              "linkedin_url": "https://www.linkedin.com/company/opalsecurity",
+              "company_website": "https://opal.dev/?utm_source=topstartups.io"
+            },
+            {
+              "name": "Joyful Health",
+              "description": "Deploying AI agents to recover revenue for doctors",
+              "tags": [
+                "Artificial Intelligence",
+                "Healthcare",
+                "Enterprise Software"
+              ],
+              "hq": "New York, New York, USA",
+              "linkedin_url": "https://www.linkedin.com/company/joyful-health-io",
+              "company_website": "https://www.joyfulhealth.com/?utm_source=topstartups.io"
+            }
+          ]
+        },
+        "pairedItem": {
+          "item": 0
+        }
+      }
+    ]
+  },
+  "connections": {
+    "When clicking ‘Execute workflow’": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request to scrape the company information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Wait": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items, one at a time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If": {
+      "main": [
+        [
+          {
+            "node": "Uniques found, get the rows to append",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Duplicates found, don't append, just get the current rows in the sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request to scrape the company information": {
+      "main": [
+        [
+          {
+            "node": "Code to structure the company information",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code to structure the company information": {
+      "main": [
+        [
+          {
+            "node": "Get the current rows in the sheet",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Code to check for duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get the current rows in the sheet": {
+      "main": [
+        [
+          {
+            "node": "Code to check for duplicates",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code to check for duplicates": {
+      "main": [
+        [
+          {
+            "node": "If",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Duplicates found, don't append, just get the current rows in the sheet": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items, one at a time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Uniques found, get the rows to append": {
+      "main": [
+        [
+          {
+            "node": "Append company data in the sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append company data in the sheet": {
+      "main": [
+        [
+          {
+            "node": "Get all the rows in the sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get all the rows in the sheet": {
+      "main": [
+        [
+          {
+            "node": "Loop Over Items, one at a time",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Loop Over Items, one at a time": {
+      "main": [
+        [],
+        [
+          {
+            "node": "Code to generate a random delay",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code to generate a random delay": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request to get employee from the company",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Code to get specific fields": {
+      "main": [
+        [
+          {
+            "node": "Append employee data in the sheet",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Append employee data in the sheet": {
+      "main": [
+        [
+          {
+            "node": "Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "HTTP Request to get employee from the company": {
+      "main": [
+        [
+          {
+            "node": "Code to get specific fields",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "cf247950-4a5f-4421-bd67-e60a5cee82e7",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "085e9452a6eda95972122c63933cf9cb47f7e33a1234100d1e9b5216d5fc9baf"
+  },
+  "id": "4buQyolmx6xSmYOG",
+  "tags": []
+}

@@ -118,59 +118,45 @@ The delay layer helps by:
 
 Using a randomized delay instead of a fixed wait is usually better for external scraping/enrichment systems because it avoids highly regular traffic patterns.
 
-Employee enrichment stage
-
-For each company in the loop, the workflow calls an employee/people lookup service:
-
-HTTP Request to get employee from the ...
+## 9.Employee Enrichment Stage
+For each company in the loop, the workflow calls an employee/people lookup service.
+- Triggered via an HTTP request from n8n
+- Connected to a backend service running locally
 
 This stage is responsible for retrieving people associated with the company, typically leadership or hiring-relevant contacts.
 
-Depending on the upstream service, this can include roles such as:
+### Playwright-Based LinkedIn Search
+The enrichment service uses Playwright to automate LinkedIn search:
+- Launches a controlled Chromium browser session
+- Navigates LinkedIn using search queries derived from company data
+- Extracts relevant people cards (e.g., founders, engineers, recruiters)
+- Simulates real user behavior instead of direct API calls
 
-founder
-co-founder
-CEO
-CTO
-VP Engineering
-Head of Engineering
-Engineering Manager
-recruiter
-talent acquisition
+This approach enables more flexible and realistic data extraction compared to static APIs.
 
-The output from this service is then passed through another code node:
+### Rate Limiting and Anti-Bot Design
+A delay is intentionally introduced before each enrichment request:
+- Prevents near-synchronous requests to LinkedIn
+- Reduces the risk of triggering anti-bot detection
+- Mimics natural human browsing patterns
 
-Code to get specific fields
+This is critical for maintaining reliability when running repeated searches.
 
-This step narrows the employee payload to the exact schema needed in the people sheet.
+### Local <-> Cloud Connectivity
+Since n8n runs in the cloud and the Playwright service runs locally:
+- Cloudflare Tunnel is used to expose the local backend
+- Allows secure communication between n8n and the local Playwright service
+- Eliminates the need for direct public deployment
+- Roles Extracted
 
-Typical employee fields might include:
+Depending on the search results, this stage retrieves roles such as:
+- Founder / Co-founder
+- CEO / CTO
+- VP Engineering / Head of Engineering
+- Engineering Manager
+- Recruiter / Talent Acquisition
 
-company_name
-person_name
-title
-linkedin_profile_url
-matched_role
-source
-score
-snippet
-company affinity or ranking metadata
-
-Finally, the processed employee data is written to Google Sheets:
-
-Append employee data in the sheet
-
-This creates a structured employee dataset that can later feed:
-
-LinkedIn resolution
-prospect filtering
-lead scoring
-personalized outreach generation
-
-
-
-
-
+The code for this step is available at: https://github.com/adijad/Fastapi_Startups_Resolver
 
 ---
 
@@ -215,6 +201,17 @@ For enrichment pipelines that depend on external APIs, browser automation, or sc
 The duplicate branch ensures the workflow can continue even when no new companies are appended.
 That is important because many automation failures happen when a branch produces zero items and downstream nodes unexpectedly stop. This architecture explicitly avoids that failure mode.
 
+---
 
+# Future Work
+The second phase of this system is currently in progress and builds directly on the outputs of this workflow.
+- Use the Company and Employee sheets as input for downstream automation
+- Generate personalized LinkedIn connection notes for identified people
+- Automate job discovery within target companies
+- Combine company context + role + person data for better personalization
+- Track outreach status and responses in a structured manner
 
+This phase aims to transition the system from data collection → actionable outreach, completing the pipeline from discovery to engagement.
+
+---
 
